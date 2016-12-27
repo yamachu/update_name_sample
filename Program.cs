@@ -35,6 +35,10 @@ namespace ConsoleApplication
 
         private async void ParseTweet(Status status)
         {
+            if (!status.InReplyToUserId.HasValue) {
+                return;
+            }
+
             var update_name_pattern = $@"^@{MyScreenName}\s+update_name\s+(?<next_name>.+)$";
             var re = new Regex(update_name_pattern, RegexOptions.IgnoreCase);
 
@@ -44,6 +48,14 @@ namespace ConsoleApplication
             var next_name = match.Groups["next_name"].Value;
             System.Console.WriteLine($"Try run update_name! => {status.User.ScreenName}: {status.Text}");
 
+            var si = new System.Globalization.StringInfo(next_name);
+            
+            if (si.LengthInTextElements > 20)
+            {
+                System.Console.WriteLine("名前が20文字を超えています");
+                return;
+            }
+
             try
             {
                 await MyToken.Account.UpdateProfileAsync(new {name = next_name});
@@ -51,7 +63,30 @@ namespace ConsoleApplication
             catch(CoreTweet.TwitterException ex)
             {
                 System.Console.WriteLine(ex);
+                return;
             }
+            var escaped_name = ReplyEscapedString(next_name);
+            var escaped_my_name = ReplyEscapedString(status.User.Name);
+
+            try
+            {
+                await MyToken.Statuses.UpdateAsync(
+                    new {
+                        status = $"{escaped_my_name} さん(@{status.User.ScreenName})により {escaped_name} に改名しました！",
+                        in_reply_to_status_id = status.Id
+                    });
+            }
+            catch(CoreTweet.TwitterException ex)
+            {
+                System.Console.WriteLine(ex);
+                return;
+            }
+        }
+
+        private string ReplyEscapedString(string str) {
+            return str.Replace("@", "@" + char.ConvertFromUtf32(0x200B))
+                        .Replace("#", "#" + char.ConvertFromUtf32(0x200B))
+                        .Replace("$", "$" + char.ConvertFromUtf32(0x200B));
         }
     }
 
